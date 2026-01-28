@@ -24,6 +24,10 @@ from ai_search_optimizer.tools.competitor_tools import (
     CompetitorAnalysisTool,
     MarketPositioningTool,
 )
+from ai_search_optimizer.tools.search_tools import (
+    LangChainSearchTool,
+    WebsiteAnalyzerTool,
+)
 
 __all__ = [
     "SEOAnalyzerTool",
@@ -37,4 +41,6 @@ __all__ = [
     "AIVisibilityTool",
     "CompetitorAnalysisTool",
     "MarketPositioningTool",
+    "LangChainSearchTool",
+    "WebsiteAnalyzerTool",
 ]
