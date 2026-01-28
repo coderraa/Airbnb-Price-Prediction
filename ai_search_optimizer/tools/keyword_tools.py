@@ -3,9 +3,9 @@ Keyword Research and Analysis Tools for AI Search Optimization.
 """
 
 import re
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, ClassVar
 from collections import Counter
-from langchain.tools import BaseTool
+from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
 
@@ -40,14 +40,14 @@ class KeywordResearchTool(BaseTool):
     args_schema: type = KeywordInput
 
     # Common question words for AI-optimized keywords
-    QUESTION_PREFIXES = [
+    QUESTION_PREFIXES: ClassVar[List[str]] = [
         "what is", "what are", "how to", "how does", "why is",
         "why do", "when to", "when should", "where to", "where can",
         "which", "who", "can you", "should I", "is it"
     ]
 
     # Intent modifiers
-    INTENT_MODIFIERS = {
+    INTENT_MODIFIERS: ClassVar[Dict[str, List[str]]] = {
         "informational": ["guide", "tutorial", "explained", "definition", "meaning", "examples"],
         "commercial": ["best", "top", "review", "comparison", "vs", "alternative"],
         "transactional": ["buy", "price", "cost", "discount", "deal", "cheap"],
@@ -463,7 +463,7 @@ class SemanticKeywordTool(BaseTool):
     """
 
     # Semantic categories for expansion
-    SEMANTIC_PATTERNS = {
+    SEMANTIC_PATTERNS: ClassVar[Dict[str, List[str]]] = {
         "synonyms": ["similar to", "same as", "like", "equivalent"],
         "related_concepts": ["related to", "associated with", "connected to"],
         "subtopics": ["types of", "categories of", "kinds of"],

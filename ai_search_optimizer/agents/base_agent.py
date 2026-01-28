@@ -6,9 +6,9 @@ from typing import List, Optional, Dict, Any
 from abc import ABC, abstractmethod
 
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.agents import AgentExecutor, create_react_agent
-from langchain.tools import BaseTool
-from langchain_core.prompts import PromptTemplate
+from langchain_core.tools import BaseTool
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.messages import HumanMessage, SystemMessage
 
 from ai_search_optimizer.config import settings
 
@@ -49,10 +49,6 @@ class BaseSearchOptimizationAgent(ABC):
         # Initialize Gemini LLM
         self.llm = self._create_llm()
 
-        # Create the agent
-        self.agent = self._create_agent()
-        self.agent_executor = self._create_executor()
-
     def _create_llm(self) -> ChatGoogleGenerativeAI:
         """Create the Gemini LLM instance."""
         return ChatGoogleGenerativeAI(
@@ -63,66 +59,30 @@ class BaseSearchOptimizationAgent(ABC):
             convert_system_message_to_human=True,
         )
 
-    def _create_agent(self):
-        """Create the ReAct agent with the specified tools."""
-        prompt = self._get_prompt_template()
-        return create_react_agent(
-            llm=self.llm,
-            tools=self.tools,
-            prompt=prompt,
-        )
-
-    def _create_executor(self) -> AgentExecutor:
-        """Create the agent executor."""
-        return AgentExecutor(
-            agent=self.agent,
-            tools=self.tools,
-            verbose=self.verbose,
-            max_iterations=self.max_iterations,
-            handle_parsing_errors=True,
-            return_intermediate_steps=True,
-        )
-
     @abstractmethod
     def _get_system_prompt(self) -> str:
         """Get the system prompt for this agent. Must be implemented by subclasses."""
         pass
 
-    def _get_prompt_template(self) -> PromptTemplate:
-        """Get the prompt template for the ReAct agent."""
-        system_prompt = self._get_system_prompt()
+    def _get_tools_description(self) -> str:
+        """Get a description of available tools."""
+        if not self.tools:
+            return "No tools available."
 
-        template = f"""{system_prompt}
+        descriptions = []
+        for tool in self.tools:
+            descriptions.append(f"- {tool.name}: {tool.description}")
+        return "\n".join(descriptions)
 
-You have access to the following tools:
-
-{{tools}}
-
-To use a tool, please use the following format:
-
-```
-Thought: I need to think about what to do
-Action: the action to take, should be one of [{{tool_names}}]
-Action Input: the input to the action
-Observation: the result of the action
-```
-
-When you have a response to say to the Human, or if you do not need to use a tool, you MUST use the format:
-
-```
-Thought: I now have enough information to respond
-Final Answer: [your response here]
-```
-
-Begin!
-
-Question: {{input}}
-Thought: {{agent_scratchpad}}"""
-
-        return PromptTemplate(
-            template=template,
-            input_variables=["input", "agent_scratchpad", "tools", "tool_names"],
-        )
+    def _execute_tool(self, tool_name: str, tool_input: str) -> str:
+        """Execute a tool by name."""
+        for tool in self.tools:
+            if tool.name == tool_name:
+                try:
+                    return tool._run(tool_input)
+                except Exception as e:
+                    return f"Error executing tool: {str(e)}"
+        return f"Tool '{tool_name}' not found."
 
     def run(self, query: str) -> Dict[str, Any]:
         """
@@ -135,12 +95,72 @@ Thought: {{agent_scratchpad}}"""
             Dictionary containing the output and intermediate steps
         """
         try:
-            result = self.agent_executor.invoke({"input": query})
+            system_prompt = self._get_system_prompt()
+            tools_desc = self._get_tools_description()
+
+            # Build the full prompt
+            full_prompt = f"""{system_prompt}
+
+Available Tools:
+{tools_desc}
+
+When you need to use a tool, describe which tool you would use and why.
+Then provide a comprehensive response to the user's query.
+
+User Query: {query}
+"""
+
+            if self.verbose:
+                print(f"[{self.name}] Processing query...")
+
+            # Execute with LLM
+            messages = [HumanMessage(content=full_prompt)]
+            response = self.llm.invoke(messages)
+
+            # Check if any tools should be run based on the query
+            tool_results = []
+            for tool in self.tools:
+                if self.verbose:
+                    print(f"[{self.name}] Running tool: {tool.name}")
+                try:
+                    # Run tool with the query
+                    result = tool._run(query)
+                    tool_results.append({
+                        "tool": tool.name,
+                        "result": result
+                    })
+                except Exception as e:
+                    if self.verbose:
+                        print(f"[{self.name}] Tool error: {e}")
+
+            # Combine tool results with LLM analysis
+            if tool_results:
+                tool_output = "\n\n".join([
+                    f"=== {tr['tool']} Results ===\n{tr['result']}"
+                    for tr in tool_results
+                ])
+
+                # Get LLM to synthesize results
+                synthesis_prompt = f"""Based on the following analysis results, provide a comprehensive summary and recommendations:
+
+{tool_output}
+
+Original Query: {query}
+
+Please synthesize these results into actionable insights and recommendations."""
+
+                synthesis_response = self.llm.invoke([HumanMessage(content=synthesis_prompt)])
+
+                final_output = f"{tool_output}\n\n=== SYNTHESIS ===\n{synthesis_response.content}"
+            else:
+                final_output = response.content
+
             return {
                 "success": True,
-                "output": result.get("output", ""),
-                "intermediate_steps": result.get("intermediate_steps", []),
+                "output": final_output,
+                "intermediate_steps": tool_results,
             }
+
         except Exception as e:
             return {
                 "success": False,
@@ -159,12 +179,26 @@ Thought: {{agent_scratchpad}}"""
             Dictionary containing the output and intermediate steps
         """
         try:
-            result = await self.agent_executor.ainvoke({"input": query})
+            system_prompt = self._get_system_prompt()
+            tools_desc = self._get_tools_description()
+
+            full_prompt = f"""{system_prompt}
+
+Available Tools:
+{tools_desc}
+
+User Query: {query}
+"""
+
+            messages = [HumanMessage(content=full_prompt)]
+            response = await self.llm.ainvoke(messages)
+
             return {
                 "success": True,
-                "output": result.get("output", ""),
-                "intermediate_steps": result.get("intermediate_steps", []),
+                "output": response.content,
+                "intermediate_steps": [],
             }
+
         except Exception as e:
             return {
                 "success": False,

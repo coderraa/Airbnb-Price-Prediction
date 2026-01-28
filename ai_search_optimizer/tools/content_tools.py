@@ -3,8 +3,8 @@ Content Optimization Tools for AI Search Optimization.
 """
 
 import re
-from typing import Optional, Dict, Any, List
-from langchain.tools import BaseTool
+from typing import Optional, Dict, Any, List, ClassVar
+from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
 
@@ -41,7 +41,7 @@ class ContentOptimizerTool(BaseTool):
     args_schema: type = ContentInput
 
     # AI platform optimization patterns
-    PLATFORM_PATTERNS = {
+    PLATFORM_PATTERNS: ClassVar[Dict[str, Dict[str, Any]]] = {
         "chatgpt": {
             "prefer_format": "conversational with clear structure",
             "optimal_length": "comprehensive but scannable",

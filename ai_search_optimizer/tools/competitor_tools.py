@@ -4,7 +4,7 @@ Competitor Analysis Tools for AI Search Optimization.
 
 import re
 from typing import Optional, Dict, Any, List
-from langchain.tools import BaseTool
+from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 import requests
 from bs4 import BeautifulSoup
